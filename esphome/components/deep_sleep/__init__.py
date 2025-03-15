@@ -16,6 +16,7 @@ from esphome.const import (
     CONF_WAKEUP_PIN,
     PLATFORM_ESP32,
     PLATFORM_ESP8266,
+    PLATFORM_RP2040,
 )
 
 from esphome.components.esp32 import get_esp32_variant
@@ -102,6 +103,7 @@ WAKEUP_PINS = {
     VARIANT_ESP32C2: [0, 1, 2, 3, 4, 5],
     VARIANT_ESP32C6: [0, 1, 2, 3, 4, 5, 6, 7],
     VARIANT_ESP32H2: [7, 8, 9, 10, 11, 12, 13, 14],
+    "RP2040": list(range(30)),  # RP2040 supports all GPIO pins for wakeup
 }
 
 
@@ -119,6 +121,16 @@ def validate_config(config):
         raise cv.Invalid("ESP32-C3 does not support wakeup from touch.")
     if get_esp32_variant() == VARIANT_ESP32C3 and CONF_TOUCH_WAKEUP in config:
         raise cv.Invalid("ESP32-C3 does not support wakeup from ext1")
+    if CONF_SLEEP_DURATION in config:
+        if CONF_WAKEUP_PIN in config:
+            if CORE.is_esp32:
+                pass
+            elif CORE.is_esp8266:
+                raise cv.Invalid("Wakeup pin cannot be used with sleep duration on ESP8266")
+            elif CORE.is_rp2040:
+                pass
+            else:
+                raise cv.Invalid("Wakeup pin not supported on this platform")
     return config
 
 
@@ -211,44 +223,42 @@ async def to_code(config):
     if CONF_WAKEUP_PIN in config:
         pin = await cg.gpio_pin_expression(config[CONF_WAKEUP_PIN])
         cg.add(var.set_wakeup_pin(pin))
-    if CONF_WAKEUP_PIN_MODE in config:
-        cg.add(var.set_wakeup_pin_mode(config[CONF_WAKEUP_PIN_MODE]))
+        if CORE.is_esp32:
+            if CONF_WAKEUP_PIN_MODE in config:
+                cg.add(var.set_wakeup_pin_mode(config[CONF_WAKEUP_PIN_MODE]))
+        elif CORE.is_rp2040:
+            pass  # RP2040 uses default wakeup pin mode
+
     if CONF_RUN_DURATION in config:
-        run_duration_config = config[CONF_RUN_DURATION]
-        if not isinstance(run_duration_config, dict):
-            cg.add(var.set_run_duration(config[CONF_RUN_DURATION]))
-        else:
-            default_run_duration = run_duration_config[CONF_DEFAULT]
-            wakeup_cause_to_run_duration = cg.StructInitializer(
-                WakeupCauseToRunDuration,
-                ("default_cause", default_run_duration),
-                (
-                    "touch_cause",
-                    run_duration_config.get(
-                        CONF_TOUCH_WAKEUP_REASON, default_run_duration
-                    ),
-                ),
-                (
-                    "gpio_cause",
-                    run_duration_config.get(
-                        CONF_GPIO_WAKEUP_REASON, default_run_duration
-                    ),
-                ),
+        cg.add(var.set_run_duration(config[CONF_RUN_DURATION]))
+
+    if CONF_TIME_ID in config:
+        time_ = await cg.get_variable(config[CONF_TIME_ID])
+        cg.add(var.set_time(time_))
+
+    if CORE.is_esp32:
+        if CONF_ESP32_EXT1_WAKEUP in config:
+            ext1_config = config[CONF_ESP32_EXT1_WAKEUP]
+            mask = 0
+            for pin in ext1_config[CONF_PINS]:
+                mask |= 1 << pin[CONF_NUMBER]
+            struct = cg.StructInitializer(
+                Ext1Wakeup, ("mask", mask), ("wakeup_mode", ext1_config[CONF_MODE])
             )
-            cg.add(var.set_run_duration(wakeup_cause_to_run_duration))
+            cg.add(var.set_ext1_wakeup(struct))
 
-    if CONF_ESP32_EXT1_WAKEUP in config:
-        conf = config[CONF_ESP32_EXT1_WAKEUP]
-        mask = 0
-        for pin in conf[CONF_PINS]:
-            mask |= 1 << pin[CONF_NUMBER]
-        struct = cg.StructInitializer(
-            Ext1Wakeup, ("mask", mask), ("wakeup_mode", conf[CONF_MODE])
-        )
-        cg.add(var.set_ext1_wakeup(struct))
+        if CONF_TOUCH_WAKEUP in config:
+            cg.add(var.set_touch_wakeup(config[CONF_TOUCH_WAKEUP]))
 
-    if CONF_TOUCH_WAKEUP in config:
-        cg.add(var.set_touch_wakeup(config[CONF_TOUCH_WAKEUP]))
+        if CONF_WAKEUP_CAUSE_TO_RUN_DURATION in config:
+            wakeup_cause_to_run_duration = config[CONF_WAKEUP_CAUSE_TO_RUN_DURATION]
+            struct = cg.StructInitializer(
+                WakeupCauseToRunDuration,
+                ("default_cause", wakeup_cause_to_run_duration[CONF_DEFAULT_CAUSE]),
+                ("touch_cause", wakeup_cause_to_run_duration[CONF_TOUCH_CAUSE]),
+                ("gpio_cause", wakeup_cause_to_run_duration[CONF_GPIO_CAUSE]),
+            )
+            cg.add(var.set_run_duration(struct))
 
     cg.add_define("USE_DEEP_SLEEP")
 

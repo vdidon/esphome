@@ -9,6 +9,10 @@
 #include <esp_sleep.h>
 #endif
 
+#ifdef USE_RP2040
+#include <hardware/rtc.h>
+#endif
+
 #ifdef USE_TIME
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/core/time.h"
@@ -60,19 +64,21 @@ template<typename... Ts> class PreventDeepSleepAction;
  *
  * To set this component up, first set *when* the deep sleep should trigger using set_run_cycles
  * and set_run_duration, then set how long the deep sleep should last using set_sleep_duration and optionally
- * on the ESP32 set_wakeup_pin.
+ * on the ESP32 or RP2040 set_wakeup_pin.
  */
 class DeepSleepComponent : public Component {
  public:
   /// Set the duration in ms the component should sleep once it's in deep sleep mode.
   void set_sleep_duration(uint32_t time_ms);
-#if defined(USE_ESP32)
-  /** Set the pin to wake up to on the ESP32 once it's in deep sleep mode.
+#if defined(USE_ESP32) || defined(USE_RP2040)
+  /** Set the pin to wake up to on the ESP32 or RP2040 once it's in deep sleep mode.
    * Use the inverted property to set the wakeup level.
    */
   void set_wakeup_pin(InternalGPIOPin *pin) { this->wakeup_pin_ = pin; }
 
+#if defined(USE_ESP32)
   void set_wakeup_pin_mode(WakeupPinMode wakeup_pin_mode);
+#endif
 #endif
 
 #if defined(USE_ESP32)
@@ -113,8 +119,10 @@ class DeepSleepComponent : public Component {
   void deep_sleep_();
 
   optional<uint64_t> sleep_duration_;
+#if defined(USE_ESP32) || defined(USE_RP2040)
+  InternalGPIOPin *wakeup_pin_{nullptr};
+#endif
 #ifdef USE_ESP32
-  InternalGPIOPin *wakeup_pin_;
   WakeupPinMode wakeup_pin_mode_{WAKEUP_PIN_MODE_IGNORE};
 
 #if !defined(USE_ESP32_VARIANT_ESP32C3)
