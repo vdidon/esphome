@@ -72,5 +72,22 @@ void DeepSleepComponent::prevent_deep_sleep() { this->prevent_ = true; }
 
 void DeepSleepComponent::allow_deep_sleep() { this->prevent_ = false; }
 
+// Implémentations par défaut des méthodes virtuelles
+optional<uint32_t> DeepSleepComponent::get_run_duration_() const {
+  return this->run_duration_;
+}
+
+void DeepSleepComponent::dump_config_platform_() {
+  ESP_LOGCONFIG(TAG, "  Platform: Generic");
+}
+
+bool DeepSleepComponent::prepare_to_sleep_() {
+  return true;
+}
+
+void DeepSleepComponent::deep_sleep_() {
+  ESP_LOGW(TAG, "Deep sleep not implemented for this platform");
+}
+
 }  // namespace deep_sleep
 }  // namespace esphome

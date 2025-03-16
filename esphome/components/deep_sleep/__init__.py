@@ -19,108 +19,55 @@ from esphome.const import (
     PLATFORM_RP2040,
 )
 
-from esphome.components.esp32 import get_esp32_variant
-from esphome.components.esp32.const import (
-    VARIANT_ESP32,
-    VARIANT_ESP32C3,
-    VARIANT_ESP32S2,
-    VARIANT_ESP32S3,
-    VARIANT_ESP32C2,
-    VARIANT_ESP32C6,
-    VARIANT_ESP32H2,
-)
+from esphome.core import CORE
 
-WAKEUP_PINS = {
-    VARIANT_ESP32: [
-        0,
-        2,
-        4,
-        12,
-        13,
-        14,
-        15,
-        25,
-        26,
-        27,
-        32,
-        33,
-        34,
-        35,
-        36,
-        37,
-        38,
-        39,
+# Import ESP32 constants conditionnellement
+if CORE.is_esp32:
+    from esphome.components.esp32 import get_esp32_variant
+    from esphome.components.esp32.const import (
+        VARIANT_ESP32,
+        VARIANT_ESP32C3,
+        VARIANT_ESP32S2,
+        VARIANT_ESP32S3,
+        VARIANT_ESP32C2,
+        VARIANT_ESP32C6,
+        VARIANT_ESP32H2,
+    )
+
+# Définir les pins de réveil par plateforme
+WAKEUP_PINS_ESP32 = {
+    "ESP32": [
+        0, 2, 4, 12, 13, 14, 15, 25, 26, 27, 32, 33, 34, 35, 36, 37, 38, 39,
     ],
-    VARIANT_ESP32C3: [0, 1, 2, 3, 4, 5],
-    VARIANT_ESP32S2: [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-        12,
-        13,
-        14,
-        15,
-        16,
-        17,
-        18,
-        19,
-        20,
-        21,
+    "ESP32-C3": [0, 1, 2, 3, 4, 5],
+    "ESP32-S2": [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
     ],
-    VARIANT_ESP32S3: [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-        12,
-        13,
-        14,
-        15,
-        16,
-        17,
-        18,
-        19,
-        20,
-        21,
+    "ESP32-S3": [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
     ],
-    VARIANT_ESP32C2: [0, 1, 2, 3, 4, 5],
-    VARIANT_ESP32C6: [0, 1, 2, 3, 4, 5, 6, 7],
-    VARIANT_ESP32H2: [7, 8, 9, 10, 11, 12, 13, 14],
-    "RP2040": list(range(30)),  # RP2040 supports all GPIO pins for wakeup
+    "ESP32-C2": [0, 1, 2, 3, 4, 5],
+    "ESP32-C6": [0, 1, 2, 3, 4, 5, 6, 7],
+    "ESP32-H2": [7, 8, 9, 10, 11, 12, 13, 14],
 }
 
+WAKEUP_PINS_RP2040 = list(range(30))  # RP2040 supporte tous les GPIO pins pour le réveil
 
 def validate_pin_number(value):
-    valid_pins = WAKEUP_PINS.get(get_esp32_variant(), WAKEUP_PINS[VARIANT_ESP32])
-    if value[CONF_NUMBER] not in valid_pins:
-        raise cv.Invalid(
-            f"Only pins {', '.join(str(x) for x in valid_pins)} support wakeup"
-        )
+    if CORE.is_esp32:
+        variant = get_esp32_variant()
+        valid_pins = WAKEUP_PINS_ESP32.get(variant, WAKEUP_PINS_ESP32["ESP32"])
+        if value[CONF_NUMBER] not in valid_pins:
+            raise cv.Invalid(
+                f"Only pins {', '.join(str(x) for x in valid_pins)} support wakeup"
+            )
+    elif CORE.is_rp2040:
+        if value[CONF_NUMBER] not in WAKEUP_PINS_RP2040:
+            raise cv.Invalid(f"Invalid pin number for RP2040")
     return value
 
 
 def validate_config(config):
-    if get_esp32_variant() == VARIANT_ESP32C3 and CONF_ESP32_EXT1_WAKEUP in config:
-        raise cv.Invalid("ESP32-C3 does not support wakeup from touch.")
-    if get_esp32_variant() == VARIANT_ESP32C3 and CONF_TOUCH_WAKEUP in config:
-        raise cv.Invalid("ESP32-C3 does not support wakeup from ext1")
     if CONF_SLEEP_DURATION in config:
         if CONF_WAKEUP_PIN in config:
             if CORE.is_esp32:
@@ -131,6 +78,15 @@ def validate_config(config):
                 pass
             else:
                 raise cv.Invalid("Wakeup pin not supported on this platform")
+    
+    # Vérifier les configurations spécifiques à ESP32 uniquement sur ESP32
+    if CORE.is_esp32:
+        if get_esp32_variant() == VARIANT_ESP32C3:
+            if CONF_ESP32_EXT1_WAKEUP in config:
+                raise cv.Invalid("ESP32-C3 does not support wakeup from ext1")
+            if CONF_TOUCH_WAKEUP in config:
+                raise cv.Invalid("ESP32-C3 does not support wakeup from touch")
+    
     return config
 
 
@@ -188,10 +144,11 @@ CONFIG_SCHEMA = cv.All(
                 cv.positive_time_period_milliseconds,
             ),
             cv.Optional(CONF_SLEEP_DURATION): cv.positive_time_period_milliseconds,
-            cv.Optional(CONF_WAKEUP_PIN): cv.All(
-                cv.only_on_esp32,
-                pins.internal_gpio_input_pin_schema,
-                validate_pin_number,
+            cv.Optional(CONF_WAKEUP_PIN): cv.Any(
+                cv.All(
+                    cv.only_on([PLATFORM_ESP32, PLATFORM_RP2040]),
+                    pins.internal_gpio_input_pin_schema,
+                ),
             ),
             cv.Optional(CONF_WAKEUP_PIN_MODE): cv.All(
                 cv.only_on_esp32, cv.enum(WAKEUP_PIN_MODES), upper=True
@@ -201,7 +158,7 @@ CONFIG_SCHEMA = cv.All(
                 cv.Schema(
                     {
                         cv.Required(CONF_PINS): cv.ensure_list(
-                            pins.internal_gpio_input_pin_schema, validate_pin_number
+                            pins.internal_gpio_input_pin_schema
                         ),
                         cv.Required(CONF_MODE): cv.enum(EXT1_WAKEUP_MODES, upper=True),
                     }
@@ -210,7 +167,8 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_TOUCH_WAKEUP): cv.All(cv.only_on_esp32, cv.boolean),
         }
     ).extend(cv.COMPONENT_SCHEMA),
-    cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266]),
+    cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266, PLATFORM_RP2040]),
+    validate_config,
 )
 
 

@@ -97,10 +97,10 @@ class DeepSleepComponent : public Component {
   /// Set a duration in ms for how long the code should run before entering deep sleep mode.
   void set_run_duration(uint32_t time_ms);
 
-  void setup() override;
-  void dump_config() override;
-  void loop() override;
-  float get_loop_priority() const override;
+  virtual void setup() override;
+  virtual void dump_config() override;
+  virtual void loop() override;
+  virtual float get_loop_priority() const override;
   float get_setup_priority() const override;
 
   /// Helper to enter deep sleep mode
@@ -112,11 +112,11 @@ class DeepSleepComponent : public Component {
  protected:
   // Returns nullopt if no run duration is set. Otherwise, returns the run
   // duration before entering deep sleep.
-  optional<uint32_t> get_run_duration_() const;
+  virtual optional<uint32_t> get_run_duration_() const;
 
-  void dump_config_platform_();
-  bool prepare_to_sleep_();
-  void deep_sleep_();
+  virtual void dump_config_platform_();
+  virtual bool prepare_to_sleep_();
+  virtual void deep_sleep_();
 
   optional<uint64_t> sleep_duration_;
 #if defined(USE_ESP32) || defined(USE_RP2040)
@@ -136,6 +136,16 @@ class DeepSleepComponent : public Component {
   bool next_enter_deep_sleep_{false};
   bool prevent_{false};
 };
+
+#ifdef USE_RP2040
+class RP2040DeepSleepComponent : public DeepSleepComponent {
+ protected:
+  void deep_sleep_() override;
+  bool prepare_to_sleep_() override;
+  void dump_config_platform_() override;
+  void setup() override;
+};
+#endif
 
 extern bool global_has_deep_sleep;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
